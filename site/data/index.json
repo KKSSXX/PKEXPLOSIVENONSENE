@@ -1,17 +1,10 @@
-```json
 {
   "mods": [
     {
       "id": "player_pos_hud",
       "name": "Player Position HUD",
       "version": "1.0",
-      "author": "KKSSXX",
-      "description": "Displays the player's current map and X/Y position as an in-game HUD.",
-      "game": "gen1",
-      "repository": "https://github.com/KKSSXX/PKEXPLOSIVENONSENE",
-      "manifest": "https://raw.githubusercontent.com/KKSSXX/PKEXPLOSIVENONSENE/main/player_pos_hud/manifest.json",
-      "download": "https://github.com/KKSSXX/PKEXPLOSIVENONSENE/raw/refs/heads/main/player_pos_hud/player_pos_hud.zip"
+      "path": "player_pos_hud"
     }
   ]
 }
-```
