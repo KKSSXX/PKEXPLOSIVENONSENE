@@ -1,10 +1,11 @@
 {
+  "schema_version": 1,
   "mods": [
     {
       "id": "player_pos_hud",
       "name": "Player Position HUD",
       "version": "1.0",
-      "author": "Me",
+      "author": "KKSSXX",
       "repository": "https://github.com/KKSSXX/PKEXPLOSIVENONSENE"
     }
   ]
