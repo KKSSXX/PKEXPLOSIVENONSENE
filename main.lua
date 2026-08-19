@@ -2279,34 +2279,44 @@ return function(mod)
     -- light = house walls / paths (beige), mid = grass, dark-mid = roofs/dirt brown, dark = outline.
     -- No ID-based water sheets (block IDs differ per map -> random blue).
     -- Bright RBY-style outdoor palettes (split so roofs can be red without painting trees red)
-    -- Single outdoor palette (stable, no mis-colored random tiles).
-    -- Matches RBY screenshot: light paths, lime grass, brown structure, dark trees.
-    local OUTDOOR_COLORFUL = {
-      { 0.93, 0.95, 0.90 },  -- path / light wall
-      { 0.38, 0.88, 0.30 },  -- bright grass
-      { 0.58, 0.45, 0.28 },  -- dirt / fence / brick brown
-      { 0.08, 0.16, 0.08 },  -- tree / outline
+    local PAL_GRASS = {
+      { 0.90, 0.98, 0.72 },
+      { 0.42, 0.90, 0.32 },
+      { 0.18, 0.58, 0.20 },
+      { 0.08, 0.16, 0.08 },
     }
-    local PAL_WATER = {
-      { 0.78, 0.92, 0.98 },  -- light water / foam
-      { 0.28, 0.58, 0.92 },  -- main blue
-      { 0.12, 0.32, 0.72 },  -- deep blue
-      { 0.05, 0.10, 0.28 },  -- dark
+    local PAL_TREE = {
+      { 0.55, 0.78, 0.35 },
+      { 0.18, 0.48, 0.18 },
+      { 0.10, 0.30, 0.12 },
+      { 0.05, 0.10, 0.05 },
+    }
+    local PAL_BUILD = {
+      { 0.95, 0.95, 0.92 },  -- light path / brick
+      { 0.78, 0.72, 0.58 },  -- wall mid
+      { 0.90, 0.25, 0.25 },  -- red roof
+      { 0.12, 0.12, 0.14 },
+    }
+    local PAL_PATH = {
+      { 0.95, 0.96, 0.94 },
+      { 0.82, 0.86, 0.82 },
+      { 0.55, 0.58, 0.55 },
+      { 0.15, 0.16, 0.15 },
     }
     if gameVer == "gold" then
       local t = TOD_TINT[todForBuild] or TOD_TINT.DAY
-      OUTDOOR_COLORFUL = {
-        { math.min(1, OUTDOOR_COLORFUL[1][1] * (0.9 + 0.1 * t[1])), math.min(1, OUTDOOR_COLORFUL[1][2] * (0.9 + 0.1 * t[2])), math.min(1, OUTDOOR_COLORFUL[1][3] * (0.9 + 0.1 * t[3])) },
-        { math.min(1, OUTDOOR_COLORFUL[2][1] * t[1]), math.min(1, OUTDOOR_COLORFUL[2][2] * t[2]), math.min(1, OUTDOOR_COLORFUL[2][3] * t[3]) },
-        { math.min(1, OUTDOOR_COLORFUL[3][1] * (0.95 + 0.05 * t[1])), math.min(1, OUTDOOR_COLORFUL[3][2] * (0.95 + 0.05 * t[2])), math.min(1, OUTDOOR_COLORFUL[3][3] * (0.95 + 0.05 * t[3])) },
-        { OUTDOOR_COLORFUL[4][1] * t[1], OUTDOOR_COLORFUL[4][2] * t[2], OUTDOOR_COLORFUL[4][3] * t[3] },
-      }
-      PAL_WATER = {
-        { math.min(1, PAL_WATER[1][1] * t[1]), math.min(1, PAL_WATER[1][2] * t[2]), math.min(1, PAL_WATER[1][3] * t[3]) },
-        { math.min(1, PAL_WATER[2][1] * t[1]), math.min(1, PAL_WATER[2][2] * t[2]), math.min(1, PAL_WATER[2][3] * t[3]) },
-        { math.min(1, PAL_WATER[3][1] * t[1]), math.min(1, PAL_WATER[3][2] * t[2]), math.min(1, PAL_WATER[3][3] * t[3]) },
-        { PAL_WATER[4][1] * t[1], PAL_WATER[4][2] * t[2], PAL_WATER[4][3] * t[3] },
-      }
+      local function tintPal(pal)
+        local out = {}
+        for i = 1, 4 do
+          out[i] = {
+            math.min(1, pal[i][1] * (0.9 + 0.1 * t[1])),
+            math.min(1, pal[i][2] * (0.9 + 0.1 * t[2])),
+            math.min(1, pal[i][3] * (0.9 + 0.1 * t[3])),
+          }
+        end
+        return out
+      end
+      PAL_GRASS, PAL_TREE, PAL_BUILD, PAL_PATH = tintPal(PAL_GRASS), tintPal(PAL_TREE), tintPal(PAL_BUILD), tintPal(PAL_PATH)
     end
 
     local outdoorTileset = (
@@ -2389,13 +2399,16 @@ return function(mod)
 
     local img, blockDefs, tilesPerRow
     local imgByCat = nil
+    local rawTileData = nil
     if type(tsDef) == "table" then
       local imgPath = tsDef.image or findImagePath(tsDef)
       if type(imgPath) == "string" then
         if outdoorTileset and love.image and love.image.newImageData then
           local okData, data = pcall(love.image.newImageData, imgPath)
           if okData and data then
+            rawTileData = data
             if not imageIsMostlyGray(data) then
+              -- Engine already colorized — use true game colors
               local okImg, native = pcall(love.graphics.newImage, data)
               if okImg and native then
                 pcall(function() native:setFilter("nearest", "nearest") end)
@@ -2403,16 +2416,18 @@ return function(mod)
               end
             end
             if not img then
-              img = makeSheetFromData(data, OUTDOOR_COLORFUL)
+              imgByCat = {
+                grass = makeSheetFromData(data, PAL_GRASS),
+                tree = makeSheetFromData(data, PAL_TREE),
+                build = makeSheetFromData(data, PAL_BUILD),
+                path = makeSheetFromData(data, PAL_PATH),
+              }
+              img = imgByCat.grass or imgByCat.path
             end
-            -- separate blue water sheet (only used for water blocks)
-            imgByCat = {
-              water = makeSheetFromData(data, PAL_WATER),
-            }
           end
         end
         if not img then
-          img = loadColoredTileset(imgPath, outdoorTileset and OUTDOOR_COLORFUL or ACTIVE_PALETTE)
+          img = loadColoredTileset(imgPath, outdoorTileset and PAL_GRASS or ACTIVE_PALETTE)
         end
       end
       if type(tsDef.blocks) == "table" then
@@ -2509,47 +2524,50 @@ return function(mod)
       return q
     end
 
-    -- Conservative water detection (only true water → blue; avoids random blue tiles)
-    local waterBlockSet = nil
-    local function buildWaterSet()
-      local set = {}
-      -- Classic Gen1 OVERWORLD water-ish block ids (narrow set)
-      for _, id in ipairs({
-        0x14, 0x20, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
-        0x50, 0x51, 0x52, 0x53,
-      }) do
-        set[id] = true
-      end
-      -- Tileset collision / attributes if engine provides them
-      if type(tsDef) == "table" then
-        local col = tsDef.collision or tsDef.collisions or tsDef.blockCollision
-        if type(col) == "table" then
-          for i, v in pairs(col) do
-            local id = tonumber(i)
-            if type(i) == "number" and i >= 1 and #col > 0 then
-              id = i - 1  -- 1-based array
-            end
-            local cv = tonumber(v)
-            -- common water collision markers in gen1/gen2 disassemblies
-            if cv == 0x29 or cv == 0x21 or cv == 0x32 or v == "water" or v == "WATER" then
-              if id then set[id] = true end
+    local blockCatCache = {}
+    local function categoryForBlock(blockId, def)
+      local cached = blockCatCache[blockId]
+      if cached then return cached end
+      local cat = "grass"
+      if type(def) == "table" and rawTileData and tilesPerRow and tilesPerRow > 0 then
+        local sum, n = 0, 0
+        local dark, light = 0, 0
+        for i = 1, 16 do
+          local tileId = def[i]
+          if type(tileId) == "number" then
+            local tc = tileId % tilesPerRow
+            local tr = math.floor(tileId / tilesPerRow)
+            local px = tc * TILE_PX + 4
+            local py = tr * TILE_PX + 4
+            local okp, r, g, b, a = pcall(function()
+              return rawTileData:getPixel(px, py)
+            end)
+            if okp and a and a > 0.05 then
+              local lum = r * 0.2126 + g * 0.7152 + b * 0.0722
+              sum = sum + lum
+              n = n + 1
+              if lum < 0.28 then dark = dark + 1 end
+              if lum > 0.72 then light = light + 1 end
             end
           end
         end
-        local waterList = tsDef.waterBlocks or tsDef.water or tsDef.water_blocks
-        if type(waterList) == "table" then
-          for _, id in pairs(waterList) do
-            if type(id) == "number" then set[id] = true end
+        if n > 0 then
+          local avg = sum / n
+          if dark >= 6 then
+            cat = "tree"
+          elseif light >= 6 and avg > 0.55 then
+            cat = "path"
+          elseif light >= 3 and avg > 0.45 then
+            cat = "build"  -- mixed light + detail (houses, marts)
+          elseif avg > 0.55 then
+            cat = "path"
+          else
+            cat = "grass"
           end
         end
       end
-      return set
-    end
-    local function isWaterBlock(blockId)
-      if waterBlockSet == nil then
-        waterBlockSet = buildWaterSet()
-      end
-      return waterBlockSet[tonumber(blockId) or -1] == true
+      blockCatCache[blockId] = cat
+      return cat
     end
 
     local function drawBlockAt(blockId, col, row)
@@ -2558,8 +2576,9 @@ return function(mod)
         local def = blockDefs[blockId + 1] or blockDefs[blockId]
         if type(def) == "table" then
           local sheet = img
-          if imgByCat and imgByCat.water and isWaterBlock(blockId) then
-            sheet = imgByCat.water
+          if imgByCat then
+            local cat = categoryForBlock(blockId, def)
+            sheet = imgByCat[cat] or imgByCat.grass or img
           end
           love.graphics.setColor(1, 1, 1, 1)
           for ty = 0, 3 do
@@ -2784,7 +2803,7 @@ return function(mod)
   local function getTerrainCanvas(mapId, game)
     local tod = getTimeOfDay(game)
     local ver = getGameVersion(game)
-    local cacheKey = tostring(mapId) .. "#v:" .. tostring(ver) .. "#tod:" .. tostring(tod) .. "#g20"
+    local cacheKey = tostring(mapId) .. "#v:" .. tostring(ver) .. "#tod:" .. tostring(tod) .. "#g14"
     local cached = mapCanvasCache[cacheKey]
     if cached == nil then
       local built = nil
@@ -3181,12 +3200,14 @@ return function(mod)
     love.graphics.setScissor()
   end)
 
+  -- Keep minimap in sync with Gen2 day/night changes
   pcall(function()
     mod.events:on("world.tod_changed", function(ev)
       if ev and ev.tod then
         local n = normalizeTod(ev.tod)
         if n then currentTod = n end
       end
+      -- drop cached canvases so next draw rebuilds with new tint
       for k in pairs(mapCanvasCache) do
         mapCanvasCache[k] = nil
       end
@@ -3194,6 +3215,7 @@ return function(mod)
   end)
   pcall(function()
     mod.events:on("map.entered", function()
+      -- refresh tod when entering a map
       currentTod = getTimeOfDay(nil) or currentTod
     end)
   end)
