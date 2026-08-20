@@ -78,6 +78,45 @@ return function(mod)
         { "ALL", "all" },
       },
     },
+    {
+      key = "minimap_bg_size",
+      label = "MAP SIZE",
+      type = "choice",
+      default = "5",
+      choices = {
+        { "0", "0" }, { "1", "1" }, { "2", "2" }, { "3", "3" }, { "4", "4" },
+        { "5", "5" }, { "6", "6" }, { "7", "7" }, { "8", "8" }, { "9", "9" },
+        { "10", "10" },
+      },
+    },
+    {
+      key = "minimap_colorblind",
+      label = "BLINDNESS",
+      type = "choice",
+      default = "off",
+      choices = {
+        { "OFF", "off" },
+        { "ON", "on" },
+      },
+    },
+    {
+      key = "minimap_color_mode",
+      label = "MAP COLOR",
+      type = "choice",
+      default = "normal",
+      choices = {
+        { "NORMAL", "normal" },
+        { "VIVID", "vivid" },
+        { "HI-CON", "highcontrast" },
+        { "GRAY", "grayscale" },
+        { "PROTAN", "protanopia" },
+        { "PROTAN-", "protanomaly" },
+        { "DEUTAN", "deuteranopia" },
+        { "DEUTAN-", "deuteranomaly" },
+        { "TRITAN", "tritanopia" },
+        { "TRITAN-", "tritanomaly" },
+      },
+    },
   })
   local INFO_MODES = {
     { "off", "OFF" },
@@ -139,6 +178,27 @@ return function(mod)
     { "items", "ITM" },
     { "all", "ALL" },
   }
+  local MINIMAP_BG_SIZES = {
+    { "0", "0" }, { "1", "1" }, { "2", "2" }, { "3", "3" }, { "4", "4" },
+    { "5", "5" }, { "6", "6" }, { "7", "7" }, { "8", "8" }, { "9", "9" },
+    { "10", "10" },
+  }
+  local MINIMAP_COLOR_MODES = {
+    { "normal", "NORMAL" },
+    { "vivid", "VIVID" },
+    { "highcontrast", "HI-CON" },
+    { "grayscale", "GRAY" },
+    { "protanopia", "PROTAN" },
+    { "protanomaly", "PROTAN-" },
+    { "deuteranopia", "DEUTAN" },
+    { "deuteranomaly", "DEUTAN-" },
+    { "tritanopia", "TRITAN" },
+    { "tritanomaly", "TRITAN-" },
+  }
+  local MINIMAP_BLINDNESS_MODES = {
+    { "off", "OFF" },
+    { "on", "ON" },
+  }
   local MINIMAP_BOX = 224
   local ZOOM_BASE_RADIUS = 12
   local ZOOM_STEP = 1.2
@@ -155,81 +215,6 @@ return function(mod)
   local BLOCK_PX = 32
   local TILE_PX = 8
   local CELL_PX = 16
-
-  -- Gen2 time-of-day (MORN / DAY / NITE). Also works if Gen1 exposes world.tod.
-  local currentTod = "DAY"
-  local function normalizeTod(v)
-    if v == nil then return nil end
-    if type(v) == "number" then
-      -- common engine encodings: 0=morn, 1=day, 2=nite
-      if v == 0 then return "MORN" end
-      if v == 1 then return "DAY" end
-      if v == 2 or v == 3 then return "NITE" end
-      return "DAY"
-    end
-    local s = tostring(v):upper()
-    if s == "MORN" or s == "MORNING" or s == "DAWN" then return "MORN" end
-    if s == "DAY" or s == "MIDDAY" or s == "NOON" or s == "AFTERNOON" then return "DAY" end
-    if s == "NITE" or s == "NIGHT" or s == "EVENING" or s == "EVE" or s == "DARK" then
-      return "NITE"
-    end
-    return nil
-  end
-  local function readTodFromSave(game)
-    local save = game and game.save
-    if not save then return nil end
-    for _, key in ipairs({ "timeOfDay", "tod", "daytime", "time_of_day" }) do
-      local n = normalizeTod(save[key])
-      if n then return n end
-    end
-    local clock = save.clock or save.time or save.rtc
-    if type(clock) == "table" then
-      local n = normalizeTod(clock.tod or clock.timeOfDay or clock.period)
-      if n then return n end
-      local h = tonumber(clock.hour or clock.h or clock.hours)
-      if h then
-        -- Gen2 defaults: morn 4-9, day 10-17, nite 18-3
-        if h >= 4 and h <= 9 then return "MORN" end
-        if h >= 10 and h <= 17 then return "DAY" end
-        return "NITE"
-      end
-    end
-    return nil
-  end
-  local function getTimeOfDay(game)
-    -- live world API first
-    if mod.world and type(mod.world.timeOfDay) == "function" then
-      local ok, v = pcall(function() return mod.world:timeOfDay() end)
-      local n = ok and normalizeTod(v)
-      if n then currentTod = n; return n end
-    end
-    if mod.world and type(mod.world.tod) == "function" then
-      local ok, v = pcall(function() return mod.world:tod() end)
-      local n = ok and normalizeTod(v)
-      if n then currentTod = n; return n end
-    end
-    local ow = game and (game.overworld or game.world)
-    if type(ow) == "table" then
-      local n = normalizeTod(ow.tod or ow.timeOfDay or ow.daytime)
-      if n then currentTod = n; return n end
-    end
-    local n = readTodFromSave(game)
-    if n then currentTod = n; return n end
-    return currentTod or "DAY"
-  end
-  -- Multipliers applied to base tileset palette (RGB 0..1)
-  local TOD_TINT = {
-    MORN = { 1.05, 0.92, 0.78 },  -- warm sunrise
-    DAY  = { 1.00, 1.00, 0.96 },  -- bright midday
-    NITE = { 0.45, 0.52, 0.85 },  -- cool night
-  }
-  local function applyTodTint(r, g, b, tod)
-    local t = TOD_TINT[tod or "DAY"] or TOD_TINT.DAY
-    r = math.min(1, math.max(0, r * t[1]))
-    g = math.min(1, math.max(0, g * t[2]))
-    b = math.min(1, math.max(0, b * t[3]))
-    return r, g, b
-  end
 
   -- Exclusive color identity per cartridge version
   local function getGameVersion(game)
@@ -253,47 +238,8 @@ return function(mod)
     if s:find("yellow", 1, true) or s == "y" then return "yellow" end
     if s:find("blue", 1, true) or s == "b" then return "blue" end
     if s:find("red", 1, true) or s == "r" then return "red" end
-    -- heuristic: gen2 clock / johto maps imply gold
-    if save and (save.clock or save.timeOfDay or save.tod) then
-      return "gold"
-    end
     return "red"
   end
-
-  -- Outdoor 4-shade bases, exclusive per version (then TOD multiplies on Gold)
-  -- Natural terrain 4-shade (shared R/B/Y). Gold uses GOLD_TOD_OUTDOOR.
-  local NATURAL_OUTDOOR = {
-    { 0.92, 0.95, 0.92 },
-    { 0.45, 0.92, 0.35 },
-    { 0.92, 0.28, 0.28 },
-    { 0.08, 0.18, 0.10 },
-  }
-  local VERSION_OUTDOOR = {
-    red = NATURAL_OUTDOOR,
-    blue = NATURAL_OUTDOOR,
-    yellow = NATURAL_OUTDOOR,
-    gold = NATURAL_OUTDOOR,
-  }
-  local GOLD_TOD_OUTDOOR = {
-    MORN = {
-      { 0.99, 0.94, 0.78 },
-      { 0.55, 0.78, 0.32 },
-      { 0.35, 0.48, 0.22 },
-      { 0.12, 0.10, 0.08 },
-    },
-    DAY = {
-      { 0.97, 0.97, 0.90 },
-      { 0.40, 0.78, 0.42 },
-      { 0.20, 0.48, 0.36 },
-      { 0.08, 0.10, 0.10 },
-    },
-    NITE = {
-      { 0.55, 0.58, 0.78 },
-      { 0.22, 0.32, 0.58 },
-      { 0.12, 0.16, 0.35 },
-      { 0.04, 0.05, 0.10 },
-    },
-  }
 
   local function bucket(game)
     local o = game and game.save and game.save.options
@@ -321,6 +267,129 @@ return function(mod)
       pcall(function()
         mod.options:set(key, value)
       end)
+    end
+  end
+
+  -- "MAP SIZE" (0..10) ist die reine Fenster-/Hintergrundgröße der Minimap-Box
+  -- auf dem Bildschirm — NICHT der Zoom (der bestimmt, wie viele Zellen der
+  -- Welt hineinpassen). Default "5" ergibt exakt die bisherige Boxgröße
+  -- (224px), damit sich für Nutzer ohne Anpassung nichts ändert.
+  local function minimapBoxPx(game)
+    local v = tonumber(getOpt(game, "minimap_bg_size", "5")) or 5
+    if v < 0 then v = 0 end
+    if v > 10 then v = 10 end
+    return 144 + v * 16 -- 0 -> 144px .. 5 -> 224px .. 10 -> 304px
+  end
+
+  -- ============================================================
+  -- Farb-/Colorblind-Modus als reiner Anzeige-Filter: wird als Shader über
+  -- das fertig gezeichnete Terrain + alle Marker gelegt, verändert also
+  -- NICHT die zugrunde liegenden Spielfarben/Paletten, nur die Darstellung
+  -- auf der Minimap.
+  --
+  -- "MAP COLOR" wählt den Modus (auch allgemeine Darstellungs-Varianten wie
+  -- VIVID/HI-CON/GRAY). "BLINDNESS" (ON/OFF) ist der separate Master-Schalter
+  -- NUR für die eigentlichen Farbfehlsichtigkeits-Simulationen (PROTAN/
+  -- DEUTAN/TRITAN + deren milde "-"-Varianten) -- steht der auf OFF, wirkt
+  -- eine ausgewählte Blindheits-Variante nicht, die allgemeinen Modi
+  -- (NORMAL/VIVID/HI-CON/GRAY) sind davon unabhängig.
+  -- ============================================================
+  local colorblindShader = nil
+  local colorblindShaderTried = false
+  local COLORBLIND_MODE_ID = {
+    normal = 0,
+    protanopia = 1, deuteranopia = 2, tritanopia = 3,
+    grayscale = 4, vivid = 5, highcontrast = 6,
+    protanomaly = 7, deuteranomaly = 8, tritanomaly = 9,
+  }
+  -- (BLINDNESS ist jetzt ein globaler Master-Schalter für ALLE Modi -- kein
+  -- separates Gate mehr nur für Protan/Deutan/Tritan, siehe beginColorblindFilter.)
+  local function getColorblindShader()
+    if colorblindShaderTried then return colorblindShader end
+    colorblindShaderTried = true
+    if not (love.graphics and love.graphics.newShader) then return nil end
+    local ok, shader = pcall(love.graphics.newShader, [[
+      extern int u_mode;
+      vec4 effect(vec4 color, Image tex, vec2 texcoord, vec2 pixcoord) {
+        vec4 px = Texel(tex, texcoord) * color;
+        float r = px.r, g = px.g, b = px.b;
+        vec3 outc = vec3(r, g, b);
+        float lum = r*0.2126 + g*0.7152 + b*0.0722;
+        if (u_mode == 1) {
+          // Protanopia (voll)
+          outc = vec3(0.567*r + 0.433*g, 0.558*r + 0.442*g, 0.242*g + 0.758*b);
+        } else if (u_mode == 2) {
+          // Deuteranopia (voll)
+          outc = vec3(0.625*r + 0.375*g, 0.70*r + 0.30*g, 0.30*g + 0.70*b);
+        } else if (u_mode == 3) {
+          // Tritanopia (voll)
+          outc = vec3(0.95*r + 0.05*g, 0.433*g + 0.567*b, 0.475*g + 0.525*b);
+        } else if (u_mode == 4) {
+          // Graustufen
+          outc = vec3(lum, lum, lum);
+        } else if (u_mode == 5) {
+          // Vivid: Sättigung anheben
+          outc = mix(vec3(lum, lum, lum), vec3(r, g, b), 1.6);
+        } else if (u_mode == 6) {
+          // High Contrast: Kontrast um die Mitte spreizen
+          outc = clamp((vec3(r, g, b) - 0.5) * 1.5 + 0.5, 0.0, 1.0);
+        } else if (u_mode == 7) {
+          // Protanomaly (mild) -- halb Original, halb volle Protanopie
+          vec3 full = vec3(0.567*r + 0.433*g, 0.558*r + 0.442*g, 0.242*g + 0.758*b);
+          outc = mix(vec3(r, g, b), full, 0.55);
+        } else if (u_mode == 8) {
+          // Deuteranomaly (mild)
+          vec3 full = vec3(0.625*r + 0.375*g, 0.70*r + 0.30*g, 0.30*g + 0.70*b);
+          outc = mix(vec3(r, g, b), full, 0.55);
+        } else if (u_mode == 9) {
+          // Tritanomaly (mild)
+          vec3 full = vec3(0.95*r + 0.05*g, 0.433*g + 0.567*b, 0.475*g + 0.525*b);
+          outc = mix(vec3(r, g, b), full, 0.55);
+        }
+        return vec4(clamp(outc, 0.0, 1.0), px.a);
+      }
+    ]])
+    if ok and shader then
+      colorblindShader = shader
+    else
+      colorblindShader = nil
+    end
+    return colorblindShader
+  end
+  -- Aktiviert (falls nötig) den Farb-Filter-Shader für den Aufrufer und
+  -- gibt eine Funktion zurück, die ihn am Ende wieder deaktiviert.
+  --
+  -- MAP COLOR wirkt jetzt IMMER direkt bei Auswahl -- kein Gate mehr über
+  -- BLINDNESS (das hatte "MAP COLOR macht nichts mehr" ausgelöst, wenn
+  -- BLINDNESS auf OFF stand, was der Default ist). BLINDNESS bleibt als
+  -- Option bestehen, aber rein informativ/für später -- blockiert MAP
+  -- COLOR nicht mehr. NORMAL entspricht weiterhin "kein Filter".
+  local colorFilterDiagState = { lastMode = nil }
+  local function beginColorblindFilter(game)
+    local mode = getOpt(game, "minimap_color_mode", "normal")
+    local modeId = COLORBLIND_MODE_ID[mode] or 0
+
+    if mode ~= colorFilterDiagState.lastMode then
+      colorFilterDiagState.lastMode = mode
+      local shaderOk = getColorblindShader() ~= nil
+      mod.log:info(
+        "minimap: color filter changed -> mode='%s' shaderCompiled=%s appliedModeId=%d",
+        tostring(mode), tostring(shaderOk), modeId
+      )
+    end
+
+    if modeId == 0 then
+      return function() end
+    end
+    local shader = getColorblindShader()
+    if not shader then
+      return function() end
+    end
+    local prevShader = love.graphics.getShader()
+    pcall(function() shader:send("u_mode", modeId) end)
+    love.graphics.setShader(shader)
+    return function()
+      love.graphics.setShader(prevShader)
     end
   end
   local function indexOf(list, value)
@@ -397,6 +466,9 @@ return function(mod)
     { id = "player_pos_hud_position", label = "HUD POS", key = "hud_position", list = POS_MODES, fallback = "top_right" },
     { id = "player_pos_hud_minimap", label = "MINIMAP", key = "minimap", list = MINIMAP_MODES, fallback = "top_left" },
     { id = "player_pos_hud_minimap_zoom", label = "MAP ZOOM", key = "minimap_zoom", list = MINIMAP_ZOOMS, fallback = "0" },
+    { id = "player_pos_hud_bg_size", label = "MAP SIZE", key = "minimap_bg_size", list = MINIMAP_BG_SIZES, fallback = "5" },
+    { id = "player_pos_hud_blindness", label = "BLINDNESS", key = "minimap_colorblind", list = MINIMAP_BLINDNESS_MODES, fallback = "off" },
+    { id = "player_pos_hud_color_mode", label = "MAP COLOR", key = "minimap_color_mode", list = MINIMAP_COLOR_MODES, fallback = "normal" },
     { id = "player_pos_hud_markers", label = "MARKERS", key = "show_markers", list = MARKER_MODES, fallback = "all" },
   }
   mod.hooks:wrap("ui.options.rows", function(nextFn, game, rows)
@@ -1455,30 +1527,36 @@ return function(mod)
     return "npc"
   end
   local spriteCache = {}
-  -- Warm neutral (not blue) for minimap NPC sprites
-  local SPRITE_PALETTE = {
-    { 0.98, 0.96, 0.90 },
-    { 0.92, 0.72, 0.48 },
-    { 0.55, 0.38, 0.28 },
-    { 0.12, 0.10, 0.10 },
+  -- Echte 4-Shade-Palette-Neueinfärbung für Marker-Sprites (Spieler, NPC,
+  -- Trainer, Pokeball), exakt wie beim Terrain: rohe/graue Quellbilder
+  -- werden per Luminanz (lum = r*0.2126+g*0.7152+b*0.0722) in 4 Stufen
+  -- gebucketet und über recolorImageDataFromPath() in diese Zielfarben
+  -- übersetzt (0..255-Skala, siehe recolorImageDataFromPath weiter unten).
+  -- Vorher unbenutzt definiert -- jetzt tatsächlich verdrahtet, weil Player-
+  -- und NPC-Sprites (und der Pokeball) sonst ungefärbt/"farblos" ankamen.
+  local NPC_PALETTE = {
+    { 250, 242, 222 },
+    { 235, 168, 90 },
+    { 140, 90, 55 },
+    { 35, 25, 20 },
   }
-  local TRAINER_SPRITE_PALETTE = {
-    { 0.98, 0.92, 0.90 },
-    { 0.95, 0.45, 0.38 },
-    { 0.65, 0.18, 0.16 },
-    { 0.12, 0.06, 0.06 },
+  local TRAINER_PALETTE = {
+    { 250, 235, 230 },
+    { 235, 70, 55 },
+    { 150, 30, 25 },
+    { 30, 10, 10 },
   }
-  local ITEM_PALETTE = {
-    { 1.00, 0.98, 0.75 },
-    { 1.00, 0.82, 0.25 },
-    { 0.85, 0.35, 0.20 },
-    { 0.12, 0.08, 0.08 },
+  local PLAYER_PALETTE = {
+    { 245, 240, 235 },
+    { 225, 40, 40 },
+    { 40, 80, 170 },
+    { 20, 15, 15 },
   }
-  local OBJECT_PALETTE = {
-    { 0.90, 0.95, 0.75 },
-    { 0.55, 0.78, 0.35 },
-    { 0.28, 0.48, 0.22 },
-    { 0.08, 0.12, 0.08 },
+  local POKEBALL_PALETTE = {
+    { 250, 250, 250 },
+    { 230, 40, 40 },
+    { 140, 20, 20 },
+    { 20, 20, 20 },
   }
   local function recolorImageDataFromPath(imgPath, palette)
     if not love.image or not love.image.newImageData then
@@ -1489,6 +1567,27 @@ return function(mod)
       return nil
     end
     local iw, ih = data:getWidth(), data:getHeight()
+    -- Sicherheitsnetz: nur neu einfärben, wenn die Quelle tatsächlich (fast)
+    -- grau/entfärbt ist. Ist das Sprite bereits farbig (z.B. weil die Engine
+    -- schon echte Farben liefert), NICHT überschreiben -> nil zurückgeben,
+    -- tryLoadImage() lädt dann stattdessen die Originalfarben.
+    do
+      local samples, chroma = 0, 0
+      local step = math.max(1, math.floor(math.max(iw, ih) / 24))
+      for y = 0, ih - 1, step do
+        for x = 0, iw - 1, step do
+          local r, g, b, a = data:getPixel(x, y)
+          if a and a > 0.1 then
+            samples = samples + 1
+            chroma = chroma + (math.max(r, g, b) - math.min(r, g, b))
+          end
+        end
+      end
+      local mostlyGray = samples < 1 or (chroma / samples) < 0.06
+      if not mostlyGray then
+        return nil
+      end
+    end
     local out = love.image.newImageData(iw, ih)
     for y = 0, ih - 1 do
       for x = 0, iw - 1 do
@@ -1497,7 +1596,7 @@ return function(mod)
           local lum = r * 0.2126 + g * 0.7152 + b * 0.0722
           local shade = lum > 0.83 and 1 or (lum > 0.5 and 2 or (lum > 0.17 and 3 or 4))
           local c = palette[shade]
-          out:setPixel(x, y, c[1], c[2], c[3], a)
+          out:setPixel(x, y, c[1] / 255, c[2] / 255, c[3] / 255, a)
         else
           out:setPixel(x, y, 0, 0, 0, 0)
         end
@@ -1640,12 +1739,12 @@ return function(mod)
     end
     return STANDING_FRAME[facing] or 0
   end
-  local function loadSpriteFrame(spriteId, facing)
+  local function loadSpriteFrame(spriteId, facing, palette, paletteTag)
     if not spriteId or type(spriteId) ~= "string" then
       return nil
     end
     facing = normalizeFacing(facing)
-    local cacheKey = spriteId .. ":stand:" .. facing
+    local cacheKey = spriteId .. ":stand:" .. facing .. (paletteTag and (":" .. paletteTag) or "")
     local cached = spriteCache[cacheKey]
     if cached ~= nil then
       return cached or nil
@@ -1663,7 +1762,12 @@ return function(mod)
       spriteCache[cacheKey] = false
       return nil
     end
-    local img = tryLoadImage(def.image, SPRITE_PALETTE)
+    -- Ohne palette: Original-Sprite-Farben (Engine besitzt normalerweise die
+    -- Palettenwahl). Mit palette: dieselbe 4-Shade-Luminanz-Neueinfärbung wie
+    -- beim Terrain (recolorImageDataFromPath) -- für Marker-Sprites, deren
+    -- Quellbild als graues 4-Shade-Rohbild vorliegt und sonst ungefärbt/
+    -- "farblos" auf der Minimap landet (z.B. Spieler- und NPC-Sprites).
+    local img = tryLoadImage(def.image, palette)
     if not img then
       spriteCache[cacheKey] = false
       return nil
@@ -1826,16 +1930,53 @@ return function(mod)
     )
     return { image = img, quad = quad, fw = fw, fh = fh, flipX = flipX or nil }
   end
+  local pokeballDiagnosticLogged = false
   local function getPokeballSprite()
     for _, id in ipairs({
       "SPRITE_POKE_BALL", "SPRITE_BALL", "SPRITE_POKEBALL", "SPRITE_ITEM_BALL",
+      "SPRITE_POKE_BALL_ITEM", "POKE_BALL", "BALL", "ITEM_BALL",
+      "SPRITE_OBJ_POKE_BALL", "SPRITE_FIELD_POKE_BALL", "SPRITE_HIDDEN_ITEM",
     }) do
-      local s = loadSpriteFrame(id, "down")
+      local s = loadSpriteFrame(id, "down", POKEBALL_PALETTE, "ball")
       if s then
         return s
       end
     end
+    if not pokeballDiagnosticLogged then
+      pokeballDiagnosticLogged = true
+      mod.log:info(
+        "minimap: no pokeball sprite id resolved via mod.content.sprites -- " ..
+        "falling back to a hand-drawn pokeball icon. If your build's sprite id " ..
+        "is different, tell me the exact id and I'll add it to the candidate list."
+      )
+    end
     return nil
+  end
+  -- Hand-gezeichnetes Pokeball-Icon (rot/weiß/schwarz, Original-Farbgebung)
+  -- als verlässlicher Fallback, wenn kein echtes Sprite gefunden wird --
+  -- unabhängig von Sprite-Namenskonventionen des jeweiligen Recomp-Builds.
+  local function drawPokeballIcon(px, py, r)
+    love.graphics.push()
+    -- weiße untere Hälfte
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.arc("fill", px, py, r, 0, math.pi)
+    -- rote obere Hälfte
+    love.graphics.setColor(0.92, 0.16, 0.16, 1)
+    love.graphics.arc("fill", px, py, r, math.pi, math.pi * 2)
+    -- schwarzes Band + Umriss
+    love.graphics.setColor(0.05, 0.05, 0.05, 1)
+    love.graphics.setLineWidth(math.max(1, r * 0.28))
+    love.graphics.line(px - r, py, px + r, py)
+    love.graphics.setLineWidth(1.2)
+    love.graphics.circle("line", px, py, r)
+    -- weißer Mittelknopf
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.circle("fill", px, py, r * 0.32)
+    love.graphics.setColor(0.05, 0.05, 0.05, 1)
+    love.graphics.setLineWidth(1)
+    love.graphics.circle("line", px, py, r * 0.32)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.pop()
   end
   local function drawSpriteMarker(spr, px, py, markerSize, facing, tint)
     if not spr or not spr.image or not spr.quad then
@@ -2050,6 +2191,8 @@ return function(mod)
   end
   local mapCanvasCache = {}
   local tileDiagnosticLogged = false
+  local paletteMissDiagnosticLogged = {}
+  local connDiagnosticLogged = {}
   local IMAGE_FIELD_CANDIDATES = { "sheet", "image", "path", "spriteSheet", "atlas", "texture" }
   local BLOCKDEF_FIELD_CANDIDATES = { "blocks", "blockDefs", "metatiles", "blockData" }
   local function looksLikeImagePath(s)
@@ -2177,8 +2320,7 @@ return function(mod)
     end
     mod.log:info("minimap: game.save.options keys=[%s]", table.concat(parts, ", "))
   end
-  local function buildTerrainCanvas(mapId, tod, game)
-    if tod then currentTod = tod end
+  local function buildTerrainCanvas(mapId, game)
     local gameVer = getGameVersion(game)
     local mapDef = mod.content and mod.content.maps and mod.content.maps:get(mapId)
     if not mapDef or type(mapDef.width) ~= "number" or type(mapDef.height) ~= "number"
@@ -2195,130 +2337,10 @@ return function(mod)
       tsDef = mod.content.tilesets:get(mapDef.tileset)
     end
     local tilesetNameU = tostring(mapDef.tileset or ""):upper()
-    local function paletteForTileset(name)
-      local outdoor = (
-        name == "OVERWORLD"
-        or name:find("JOHTO", 1, true) or name:find("KANTO", 1, true)
-        or name:find("ROUTE", 1, true) or name:find("TOWN", 1, true)
-        or name:find("CITY", 1, true) or name == "JOINTO"
-        or name:find("PARK", 1, true) or name:find("FOREST", 1, true)
-      )
-      if outdoor then
-        return {
-          { 0.90, 0.98, 0.72 },
-          { 0.42, 0.90, 0.32 },
-          { 0.18, 0.58, 0.20 },
-          { 0.08, 0.16, 0.08 },
-        }
-      end
-      if name:find("POKECENTER", 1, true) or name:find("POKEMON_CENTER", 1, true)
-          or name:find("MART", 1, true) or name:find("SHOP", 1, true) then
-        return {
-          { 0.98, 0.95, 0.95 },
-          { 0.95, 0.30, 0.32 },
-          { 0.72, 0.12, 0.16 },
-          { 0.16, 0.06, 0.08 },
-        }
-      end
-      if name:find("GYM", 1, true) then
-        return {
-          { 0.95, 0.95, 0.88 },
-          { 0.55, 0.70, 0.95 },
-          { 0.25, 0.35, 0.70 },
-          { 0.08, 0.08, 0.18 },
-        }
-      end
-      if name:find("HOUSE", 1, true) or name:find("GATE", 1, true)
-          or name:find("INTERIOR", 1, true) or name:find("ROOF", 1, true) then
-        return {
-          { 0.98, 0.96, 0.90 },
-          { 0.92, 0.32, 0.32 },
-          { 0.55, 0.40, 0.28 },
-          { 0.14, 0.08, 0.08 },
-        }
-      end
-      if name:find("CAVE", 1, true) or name:find("ROCK", 1, true)
-          or name:find("MOUNTAIN", 1, true) or name:find("TUNNEL", 1, true) then
-        return {
-          { 0.85, 0.82, 0.78 },
-          { 0.55, 0.48, 0.42 },
-          { 0.32, 0.28, 0.25 },
-          { 0.08, 0.07, 0.07 },
-        }
-      end
-      if name:find("FACILITY", 1, true) or name:find("LAB", 1, true)
-          or name:find("SHIP", 1, true) or name:find("MUSEUM", 1, true)
-          or name:find("GAME", 1, true) or name:find("CLUB", 1, true) then
-        return {
-          { 0.92, 0.95, 0.98 },
-          { 0.55, 0.70, 0.85 },
-          { 0.30, 0.40, 0.55 },
-          { 0.08, 0.10, 0.14 },
-        }
-      end
-      if name:find("CEMETERY", 1, true) or name:find("GRAVE", 1, true)
-          or name:find("TOWER", 1, true) then
-        return {
-          { 0.90, 0.90, 0.95 },
-          { 0.60, 0.58, 0.72 },
-          { 0.35, 0.32, 0.48 },
-          { 0.08, 0.07, 0.12 },
-        }
-      end
-      return {
-        { 0.96, 0.94, 0.90 },
-        { 0.88, 0.35, 0.35 },
-        { 0.50, 0.38, 0.28 },
-        { 0.10, 0.08, 0.08 },
-      }
-    end
-    local ACTIVE_PALETTE = paletteForTileset(tilesetNameU)
-    local todForBuild = currentTod or "DAY"
-
-    -- Outdoor color-mode palette:
-    -- light = house walls / paths (beige), mid = grass, dark-mid = roofs/dirt brown, dark = outline.
-    -- No ID-based water sheets (block IDs differ per map -> random blue).
-    -- Bright RBY-style outdoor palettes (split so roofs can be red without painting trees red)
-    local PAL_GRASS = {
-      { 0.90, 0.98, 0.72 },
-      { 0.42, 0.90, 0.32 },
-      { 0.18, 0.58, 0.20 },
-      { 0.08, 0.16, 0.08 },
-    }
-    local PAL_TREE = {
-      { 0.55, 0.78, 0.35 },
-      { 0.18, 0.48, 0.18 },
-      { 0.10, 0.30, 0.12 },
-      { 0.05, 0.10, 0.05 },
-    }
-    local PAL_BUILD = {
-      { 0.95, 0.95, 0.92 },  -- light path / brick
-      { 0.78, 0.72, 0.58 },  -- wall mid
-      { 0.90, 0.25, 0.25 },  -- red roof
-      { 0.12, 0.12, 0.14 },
-    }
-    local PAL_PATH = {
-      { 0.95, 0.96, 0.94 },
-      { 0.82, 0.86, 0.82 },
-      { 0.55, 0.58, 0.55 },
-      { 0.15, 0.16, 0.15 },
-    }
-    if gameVer == "gold" then
-      local t = TOD_TINT[todForBuild] or TOD_TINT.DAY
-      local function tintPal(pal)
-        local out = {}
-        for i = 1, 4 do
-          out[i] = {
-            math.min(1, pal[i][1] * (0.9 + 0.1 * t[1])),
-            math.min(1, pal[i][2] * (0.9 + 0.1 * t[2])),
-            math.min(1, pal[i][3] * (0.9 + 0.1 * t[3])),
-          }
-        end
-        return out
-      end
-      PAL_GRASS, PAL_TREE, PAL_BUILD, PAL_PATH = tintPal(PAL_GRASS), tintPal(PAL_TREE), tintPal(PAL_BUILD), tintPal(PAL_PATH)
-    end
-
+    -- Bugfix: diese Variable wurde an mehreren Stellen weiter unten
+    -- (Border/Baumring, Void-Farbe) verwendet, war aber nirgends mehr
+    -- definiert (undefiniert = immer nil/false) -> Innen- und Außenbereiche
+    -- konnten sich dadurch nicht mehr sauber unterscheiden. Wiederhergestellt:
     local outdoorTileset = (
       tilesetNameU == "OVERWORLD"
       or tilesetNameU:find("JOHTO", 1, true) or tilesetNameU:find("KANTO", 1, true)
@@ -2334,100 +2356,155 @@ return function(mod)
         or tilesetNameU:find("GATE", 1, true) or tilesetNameU:find("CAVE", 1, true) then
       outdoorTileset = false
     end
+    -- ============================================================
+    -- EXACT VANILLA PALETTE PATH
+    -- ============================================================
+    -- Do not invent terrain categories here. The normal overworld renderer
+    -- draws the imported 4-shade tiles and the engine's PaletteFX pass applies
+    -- the active map palette. The minimap must use that exact same palette.
+    local PaletteFX = require("src.render.PaletteFX")
+    local exactPalette = nil
+    local okPal, pal = pcall(function()
+      local ow = game and game.overworld
+      if not ow or type(ow.paletteNameFor) ~= "function" then return nil end
+      local liveMap = (ow.map and ow.map.id == mapId) and ow.map or nil
+      if not liveMap then return nil end
+      local name = ow:paletteNameFor(liveMap)
+      if not name then return nil end
+      return PaletteFX.pal(game.data, name)
+    end)
+    if okPal then exactPalette = pal end
 
-    local function recolorWithPal(r, g, b, a, pal)
-      if not a or a <= 0 then return r, g, b, a end
-      local lum = r * 0.2126 + g * 0.7152 + b * 0.0722
-      local shade = lum > 0.83 and 1 or (lum > 0.5 and 2 or (lum > 0.17 and 3 or 4))
-      local c = pal[shade]
-      return c[1], c[2], c[3], a
+    -- Indoor/Gold-Maps: paletteNameFor() liefert bei manchen Engine-Ständen
+    -- nur für Overworld-Zonen einen Namen zurück, wodurch Innenräume ohne
+    -- Palette blieben und das Tileset dann RAW/grau gezeichnet wurde (Ursache
+    -- für "Indoor sieht anders aus als Overworld"). Best-effort zusätzliche
+    -- Versuche, bevor aufgegeben wird -- weiterhin ausschließlich echte
+    -- Engine-Paletten, keine geratenen Grass/Water/Building-Paletten.
+    if not exactPalette then
+      pcall(function()
+        local name = mapDef.tileset
+        if type(name) == "string" then
+          exactPalette = PaletteFX.pal(game.data, name)
+        end
+      end)
+    end
+    if not exactPalette then
+      pcall(function()
+        local name = mapDef.palette or mapDef.paletteName
+        if type(name) == "string" then
+          exactPalette = PaletteFX.pal(game.data, name)
+        end
+      end)
+    end
+    if not exactPalette then
+      pcall(function()
+        local ow = game and game.overworld
+        if ow and type(ow.paletteNameFor) == "function" then
+          -- manche Builds akzeptieren mapDef statt eines "liveMap"-Objekts
+          local name = ow:paletteNameFor(mapDef)
+          if name then exactPalette = PaletteFX.pal(game.data, name) end
+        end
+      end)
     end
 
-    local function makeSheetFromData(data, pal)
+    -- Fallback to the actual current world zone if paletteNameFor is not
+    -- exposed by an older build. This is still engine data, never a guessed
+    -- grass/water/building palette.
+    if not exactPalette then
+      pcall(function()
+        local ow = game and game.overworld
+        local zones = ow and type(ow.sgbWorldZones) == "function"
+                    and ow:sgbWorldZones() or nil
+        if zones and zones[1] and zones[1].colors then
+          exactPalette = zones[1].colors
+        end
+      end)
+    end
+
+    local function recolorExact(data, colors)
+      if not data then return nil end
+      if not colors then return nil end
       local iw, ih = data:getWidth(), data:getHeight()
+      colors = PaletteFX.effectiveColors(colors) or colors
       local out = love.image.newImageData(iw, ih)
       for y = 0, ih - 1 do
         for x = 0, iw - 1 do
           local r, g, b, a = data:getPixel(x, y)
-          r, g, b, a = recolorWithPal(r, g, b, a, pal)
-          out:setPixel(x, y, r, g, b, a)
-        end
-      end
-      local okImg, colored = pcall(love.graphics.newImage, out)
-      if okImg and colored then
-        pcall(function() colored:setFilter("nearest", "nearest") end)
-        return colored
-      end
-      return nil
-    end
-
-    local function imageIsMostlyGray(data)
-      local iw, ih = data:getWidth(), data:getHeight()
-      local samples, chroma = 0, 0
-      local step = math.max(1, math.floor(math.max(iw, ih) / 32))
-      for y = 0, ih - 1, step do
-        for x = 0, iw - 1, step do
-          local r, g, b, a = data:getPixel(x, y)
-          if a and a > 0.1 then
-            samples = samples + 1
-            local mx = math.max(r, g, b)
-            local mn = math.min(r, g, b)
-            chroma = chroma + (mx - mn)
+          if a and a > 0 then
+            local lum = r * 0.2126 + g * 0.7152 + b * 0.0722
+            local shade = lum > 0.83 and 1
+                       or (lum > 0.5 and 2
+                       or (lum > 0.17 and 3 or 4))
+            local c = colors[shade]
+            if c then
+              out:setPixel(x, y, c[1] / 255, c[2] / 255, c[3] / 255, a)
+            else
+              out:setPixel(x, y, r, g, b, a)
+            end
+          else
+            out:setPixel(x, y, r, g, b, a)
           end
         end
       end
-      if samples < 1 then return true end
-      return (chroma / samples) < 0.06
-    end
-
-    local function loadColoredTileset(imgPath, pal)
-      pal = pal or ACTIVE_PALETTE
-      if love.image and love.image.newImageData then
-        local okData, data = pcall(love.image.newImageData, imgPath)
-        if okData and data then
-          local colored = makeSheetFromData(data, pal)
-          if colored then return colored end
-        end
-      end
-      local okImg, loaded = pcall(love.graphics.newImage, imgPath)
-      if okImg and loaded then
-        pcall(function() loaded:setFilter("nearest", "nearest") end)
-        return loaded
+      local ok, image = pcall(love.graphics.newImage, out)
+      if ok and image then
+        pcall(function() image:setFilter("nearest", "nearest") end)
+        return image
       end
       return nil
     end
 
     local img, blockDefs, tilesPerRow
-    local imgByCat = nil
     local rawTileData = nil
     if type(tsDef) == "table" then
       local imgPath = tsDef.image or findImagePath(tsDef)
       if type(imgPath) == "string" then
-        if outdoorTileset and love.image and love.image.newImageData then
+        -- Keep true-colour art untouched. Otherwise apply the exact palette
+        -- used by the normal overworld renderer to the 4 imported shades.
+        if love.image and love.image.newImageData then
           local okData, data = pcall(love.image.newImageData, imgPath)
           if okData and data then
             rawTileData = data
-            if not imageIsMostlyGray(data) then
-              -- Engine already colorized — use true game colors
+            local mostlyGray = true
+            local samples, chroma = 0, 0
+            local step = math.max(1, math.floor(math.max(data:getWidth(), data:getHeight()) / 32))
+            for y = 0, data:getHeight() - 1, step do
+              for x = 0, data:getWidth() - 1, step do
+                local r, g, b, a = data:getPixel(x, y)
+                if a and a > 0.1 then
+                  samples = samples + 1
+                  chroma = chroma + (math.max(r, g, b) - math.min(r, g, b))
+                end
+              end
+            end
+            mostlyGray = samples < 1 or (chroma / samples) < 0.06
+            if mostlyGray and exactPalette then
+              img = recolorExact(data, exactPalette)
+            else
+              if mostlyGray and not exactPalette and not paletteMissDiagnosticLogged[tostring(mapDef.tileset)] then
+                paletteMissDiagnosticLogged[tostring(mapDef.tileset)] = true
+                mod.log:info(
+                  "minimap: no engine palette found for tileset '%s' (map '%s', outdoor=%s) -- " ..
+                  "drawing raw/uncolored tile art. This is why indoor/Gold maps can look different " ..
+                  "from the overworld; check PaletteFX.pal()/ow:paletteNameFor() for this tileset.",
+                  tostring(mapDef.tileset), tostring(mapId), tostring(outdoorTileset)
+                )
+              end
               local okImg, native = pcall(love.graphics.newImage, data)
               if okImg and native then
                 pcall(function() native:setFilter("nearest", "nearest") end)
                 img = native
               end
             end
-            if not img then
-              imgByCat = {
-                grass = makeSheetFromData(data, PAL_GRASS),
-                tree = makeSheetFromData(data, PAL_TREE),
-                build = makeSheetFromData(data, PAL_BUILD),
-                path = makeSheetFromData(data, PAL_PATH),
-              }
-              img = imgByCat.grass or imgByCat.path
-            end
           end
         end
         if not img then
-          img = loadColoredTileset(imgPath, outdoorTileset and PAL_GRASS or ACTIVE_PALETTE)
+          local okImg, native = pcall(love.graphics.newImage, imgPath)
+          if okImg and native then
+            pcall(function() native:setFilter("nearest", "nearest") end)
+            img = native
+          end
         end
       end
       if type(tsDef.blocks) == "table" then
@@ -2441,6 +2518,31 @@ return function(mod)
       end
     end
     local canUseTiles = img and blockDefs and tilesPerRow and tilesPerRow > 0
+
+    -- ADVANCED mode is the only vanilla mode that does NOT use one palette
+    -- for the whole map. The real renderer assigns one of 8 palettes per tile
+    -- graphic. Reproduce that exact tile->group metadata instead of guessing
+    -- from block ids, hue or brightness.
+    local imgByGroup = nil
+    local activeWorldGroups = nil
+    if canUseTiles then
+      local okAdvanced, advanced = pcall(function() return PaletteFX.usesGbcPack() end)
+      if okAdvanced and advanced and type(tsDef) == "table"
+          and type(mapDef.tileset) == "string"
+          and PaletteFX.hasWorldTileset(mapDef.tileset)
+          and rawTileData then
+        activeWorldGroups = PaletteFX.worldGroupColors(
+          game.data, mapDef.tileset, mapId,
+          game.overworld and game.overworld.player and game.overworld.player.cellY)
+        if activeWorldGroups then
+          imgByGroup = {}
+          for gi = 1, #activeWorldGroups do
+            imgByGroup[gi] = recolorExact(rawTileData, activeWorldGroups[gi])
+          end
+        end
+      end
+    end
+
     if not canUseTiles and not tileDiagnosticLogged then
       tileDiagnosticLogged = true
       if tsDef then
@@ -2524,79 +2626,33 @@ return function(mod)
       return q
     end
 
-    local blockCatCache = {}
-    local function categoryForBlock(blockId, def)
-      local cached = blockCatCache[blockId]
-      if cached then return cached end
-      local cat = "grass"
-      if type(def) == "table" and rawTileData and tilesPerRow and tilesPerRow > 0 then
-        local sum, n = 0, 0
-        local dark, light = 0, 0
-        for i = 1, 16 do
-          local tileId = def[i]
-          if type(tileId) == "number" then
-            local tc = tileId % tilesPerRow
-            local tr = math.floor(tileId / tilesPerRow)
-            local px = tc * TILE_PX + 4
-            local py = tr * TILE_PX + 4
-            local okp, r, g, b, a = pcall(function()
-              return rawTileData:getPixel(px, py)
-            end)
-            if okp and a and a > 0.05 then
-              local lum = r * 0.2126 + g * 0.7152 + b * 0.0722
-              sum = sum + lum
-              n = n + 1
-              if lum < 0.28 then dark = dark + 1 end
-              if lum > 0.72 then light = light + 1 end
-            end
-          end
-        end
-        if n > 0 then
-          local avg = sum / n
-          if dark >= 6 then
-            cat = "tree"
-          elseif light >= 6 and avg > 0.55 then
-            cat = "path"
-          elseif light >= 3 and avg > 0.45 then
-            cat = "build"  -- mixed light + detail (houses, marts)
-          elseif avg > 0.55 then
-            cat = "path"
-          else
-            cat = "grass"
-          end
-        end
-      end
-      blockCatCache[blockId] = cat
-      return cat
-    end
-
     local function drawBlockAt(blockId, col, row)
       local bx, by = col * BLOCK_PX, row * BLOCK_PX
       if canUseTiles and blockDefs then
         local def = blockDefs[blockId + 1] or blockDefs[blockId]
         if type(def) == "table" then
-          local sheet = img
-          if imgByCat then
-            local cat = categoryForBlock(blockId, def)
-            sheet = imgByCat[cat] or imgByCat.grass or img
-          end
           love.graphics.setColor(1, 1, 1, 1)
           for ty = 0, 3 do
             for tx = 0, 3 do
               local tileId = def[ty * 4 + tx + 1]
               local q = quadFor(tileId)
+              local sheet = img
+              if imgByGroup and type(tileId) == "number" then
+                local okGroup, group = pcall(function()
+                  return PaletteFX.worldGroupAt(mapDef.tileset, mapId, tileId)
+                end)
+                if okGroup and group ~= nil then
+                  sheet = imgByGroup[group + 1] or img
+                end
+              end
               if q and sheet then
                 love.graphics.draw(sheet, q, bx + tx * TILE_PX, by + ty * TILE_PX)
               else
-                local r, g, b = blockColorLocal(blockId)
-                love.graphics.setColor(r, g, b, 1)
-                love.graphics.rectangle(
-                  "fill",
-                  bx + tx * TILE_PX,
-                  by + ty * TILE_PX,
-                  TILE_PX,
-                  TILE_PX
-                )
+                -- Only an emergency fallback. Never classify the missing tile
+                -- as water/grass/building; keep the map neutral instead.
+                love.graphics.setColor(0.12, 0.12, 0.12, 1)
+                love.graphics.rectangle("fill", bx + tx * TILE_PX,
+                  by + ty * TILE_PX, TILE_PX, TILE_PX)
                 love.graphics.setColor(1, 1, 1, 1)
               end
             end
@@ -2604,8 +2660,7 @@ return function(mod)
           return
         end
       end
-      local r, g, b = blockColorLocal(blockId)
-      love.graphics.setColor(r, g, b, 1)
+      love.graphics.setColor(0.12, 0.12, 0.12, 1)
       love.graphics.rectangle("fill", bx, by, BLOCK_PX, BLOCK_PX)
       love.graphics.setColor(1, 1, 1, 1)
     end
@@ -2636,8 +2691,21 @@ return function(mod)
       end
     end
 
-    -- connected neighbor strips (Gen1 only; Gold uses plain map bounds)
+    -- Connected neighbor strips: zeigt die ECHTEN Nachbar-Map-Tiles jenseits
+    -- des Baum-Rings an der Stelle, an der die Map wirklich in die nächste
+    -- Route übergeht (kein reiner Gen1-exklusiver Code-Pfad -- läuft für
+    -- jede Version, SOFERN mapDef.connections vorhanden ist).
     local conns = mapDef.connections
+    if type(conns) ~= "table" and outdoorTileset and not connDiagnosticLogged[tostring(mapDef.tileset)] then
+      connDiagnosticLogged[tostring(mapDef.tileset)] = true
+      mod.log:info(
+        "minimap: map '%s' (tileset '%s', ver=%s) has no .connections table -- " ..
+        "route transitions will show a full tree border instead of the real " ..
+        "neighboring route tiles. If this is Gold/Silver, check what field name " ..
+        "this Recomp build uses for map connections and tell me -- I'll wire it in.",
+        tostring(mapId), tostring(mapDef.tileset), tostring(gameVer)
+      )
+    end
     if type(conns) == "table" and mod.content and mod.content.maps then
       local sides = {
         { key = "north", dx = 0, dy = -1 },
@@ -2801,14 +2869,13 @@ return function(mod)
     return nil
   end
   local function getTerrainCanvas(mapId, game)
-    local tod = getTimeOfDay(game)
     local ver = getGameVersion(game)
-    local cacheKey = tostring(mapId) .. "#v:" .. tostring(ver) .. "#tod:" .. tostring(tod) .. "#g14"
+    local cacheKey = tostring(mapId) .. "#v:" .. tostring(ver) .. "#exactpalette"
     local cached = mapCanvasCache[cacheKey]
     if cached == nil then
       local built = nil
       do
-        local ok, b = pcall(buildTerrainCanvas, mapId, tod, game)
+        local ok, b = pcall(buildTerrainCanvas, mapId, game)
         built = (ok and b) or false
       end
       cached = built or false
@@ -2828,7 +2895,8 @@ return function(mod)
       zoomOpt = tostring(legacy[zoomOpt])
     end
     local radius = radiusForZoom(zoomOpt, ZOOM_BASE_RADIUS)
-    local boxPx = MINIMAP_BOX
+    local boxPx = minimapBoxPx(game)
+    local endColorblind = beginColorblindFilter(game)
     love.graphics.setColor(0.04, 0.04, 0.07, 0.92)
     love.graphics.rectangle("fill", mmX, mmY, boxPx, boxPx, 4, 4)
     local borderPad = 2
@@ -2913,7 +2981,13 @@ return function(mod)
           local spr = nil
           local sid = objectSpriteId(obj)
           if sid then
-            spr = loadSpriteFrame(sid, facing)
+            local palette, tag = nil, nil
+            if kind == "npc" or kind == "gift_npc" then
+              palette, tag = NPC_PALETTE, "npc"
+            elseif kind == "trainer" then
+              palette, tag = TRAINER_PALETTE, "trainer"
+            end
+            spr = loadSpriteFrame(sid, facing, palette, tag)
           end
           if not spr then
             spr = spriteFromEntity(obj, facing)
@@ -2924,35 +2998,39 @@ return function(mod)
           end
           local defeatedTrainer = (kind == "trainer") and isTrainerDefeated(game, obj, mapId)
           local drawn = false
-          if kind == "item" or kind == "hidden" then
-            drawGlow(px, py, markerSize * 0.4, 1, 0.95, 0.3)
+          if kind == "hidden" or kind == "item" then
+            -- Hidden Item + normaler Item Marker: beide Grün
+            drawGlow(px, py, markerSize * 0.4, 0.30, 0.90, 0.35)
           elseif kind == "gift_npc" then
             drawGlow(px, py, markerSize * 0.55, 0.15, 0.95, 1)
           elseif kind == "trainer" and not defeatedTrainer then
-            -- strong red glow so battle trainers are always obvious
-            drawGlow(px, py, markerSize * 0.55, 0.95, 0.15, 0.12)
+            -- Trainer Marker: Rot
+            drawGlow(px, py, markerSize * 0.55, 1.0, 0.15, 0.15)
           end
           if spr then
             local tint = nil
-            if kind == "trainer" and not defeatedTrainer then
-              tint = { 1.0, 0.55, 0.50, 1 }
-            elseif kind == "trainer" and defeatedTrainer then
-              tint = { 0.85, 0.85, 0.88, 1 }
+            if kind == "trainer" and defeatedTrainer then
+              -- besiegter Trainer: eigenes Sprite-Recolor abdunkeln/entsättigen
+              tint = { 0.55, 0.55, 0.58, 1 }
             elseif kind == "gift_npc" then
               tint = { 0.55, 0.95, 1.0, 1 }
-            elseif kind == "item" or kind == "hidden" then
-              tint = { 1.0, 0.95, 0.45, 1 }
+            elseif kind == "hidden" or kind == "item" then
+              -- Pokeball/Item-Sprite: keine Einfärbung, Originalfarben des Sprites
+              tint = nil
             elseif kind == "object" then
               tint = { 0.70, 0.90, 0.45, 1 }
             else
-              -- normal NPC: warm skin/clothes, not blue
-              tint = { 1.0, 0.92, 0.75, 1 }
+              -- NPC/Trainer (nicht besiegt): Farbe kommt bereits aus dem
+              -- echten 4-Shade-Palette-Recolor des Sprites (loadSpriteFrame
+              -- mit NPC_PALETTE/TRAINER_PALETTE) -- kein zusätzliches Tinten
+              -- mehr, sonst wird die Palette-Farbe verwaschen/doppelt gemischt.
+              tint = nil
             end
             drawn = drawSpriteMarker(spr, px, py, markerSize, facing, tint)
           end
           if not drawn then
             if kind == "trainer" and not defeatedTrainer then
-              love.graphics.setColor(0.95, 0.15, 0.12, 1)
+              love.graphics.setColor(1.0, 0.15, 0.15, 1)
               love.graphics.circle("fill", px, py, 4.0)
             elseif kind == "trainer" and defeatedTrainer then
               love.graphics.setColor(0.80, 0.80, 0.85, 1)
@@ -2962,20 +3040,21 @@ return function(mod)
               love.graphics.circle("fill", px, py, 3.5)
               love.graphics.setColor(1, 1, 1, 1)
               love.graphics.circle("line", px, py, 3.5)
-            elseif kind == "item" or kind == "hidden" then
-              love.graphics.setColor(1, 0.95, 0.3, 1)
-              local s = 5
-              love.graphics.polygon("fill", px, py - s, px + s, py, px, py + s, px - s, py)
+            elseif kind == "hidden" or kind == "item" then
+              -- kein Sprite gefunden: echtes Pokeball-Icon (OG-Farben) statt Raute
+              drawPokeballIcon(px, py, 4.5)
             elseif kind == "object" then
               love.graphics.setColor(0.6, 0.8, 0.35, 1)
               love.graphics.rectangle("fill", px - 3, py - 3, 6, 6)
             else
-              love.graphics.setColor(1, 0.85, 0.45, 1)
+              love.graphics.setColor(1, 0.70, 0.20, 1)
               love.graphics.circle("fill", px, py, 3)
             end
             love.graphics.setColor(0, 0, 0, 0.8)
             love.graphics.setLineWidth(1.2)
-            love.graphics.circle("line", px, py, 3.5)
+            if not (kind == "hidden" or kind == "item") then
+              love.graphics.circle("line", px, py, 3.5)
+            end
           end
           if kind == "gift_npc" then
             love.graphics.setColor(0.15, 0.95, 1, 1)
@@ -2986,7 +3065,7 @@ return function(mod)
           elseif kind == "trainer" and not defeatedTrainer then
             -- battle-ready: big red "!" badge, always
             local bx, by = px + markerSize * 0.32, py - markerSize * 0.32
-            love.graphics.setColor(0.95, 0.12, 0.10, 1)
+            love.graphics.setColor(1.0, 0.12, 0.10, 1)
             love.graphics.circle("fill", bx, by, 3.4)
             love.graphics.setColor(0, 0, 0, 0.9)
             love.graphics.setLineWidth(1.2)
@@ -3010,15 +3089,12 @@ return function(mod)
           if math.abs(hi.x - cx) <= radius and math.abs(hi.y - cy) <= radius then
             local px = centerX + (hi.x - cx) * cellScale
             local py = centerY + (hi.y - cy) * cellScale
-            drawGlow(px, py, markerSize * 0.4, 1, 0.3, 0.85)
+            -- Hidden Item Marker: Grün. Pokeball-Sprite bewusst OHNE Tint
+            -- (drawSpriteMarker ohne tint-Argument) -> Originalfarben.
+            drawGlow(px, py, markerSize * 0.4, 0.30, 0.90, 0.35)
             local drawn = ball and drawSpriteMarker(ball, px, py, markerSize * 0.95, "down")
             if not drawn then
-              love.graphics.setColor(1, 0.5, 1, 1)
-              local s = 5
-              love.graphics.polygon("fill", px, py - s, px + s, py, px, py + s, px - s, py)
-              love.graphics.setColor(0, 0, 0, 0.85)
-              love.graphics.setLineWidth(1.2)
-              love.graphics.polygon("line", px, py - s, px + s, py, px, py + s, px - s, py)
+              drawPokeballIcon(px, py, 4.5)
             end
           end
         end
@@ -3039,14 +3115,14 @@ return function(mod)
         playerSpr = spriteFromEntity(player, faceStr)
         if not playerSpr and player then
           local sid = objectSpriteId(player)
-          if sid then playerSpr = loadSpriteFrame(sid, faceStr) end
+          if sid then playerSpr = loadSpriteFrame(sid, faceStr, PLAYER_PALETTE, "player") end
         end
         if not playerSpr then
           for _, id in ipairs({
             "SPRITE_RED", "SPRITE_GOLD", "SPRITE_YELLOW", "SPRITE_BOY",
             "SPRITE_RED_BIKE", "SPRITE_PLAYER",
           }) do
-            playerSpr = loadSpriteFrame(id, faceStr)
+            playerSpr = loadSpriteFrame(id, faceStr, PLAYER_PALETTE, "player")
             if playerSpr then break end
           end
         end
@@ -3065,6 +3141,7 @@ return function(mod)
       end
     end
     love.graphics.setScissor()
+    endColorblind()
     love.graphics.setColor(0, 0, 0, 0.85)
     love.graphics.setLineWidth(3)
     love.graphics.rectangle("line", mmX + 0.5, mmY + 0.5, boxPx - 1, boxPx - 1, 4, 4)
@@ -3102,7 +3179,7 @@ return function(mod)
     local margin = 6
     local gap = 6
     local ww, wh = love.graphics.getDimensions()
-    local boxPx = MINIMAP_BOX
+    local boxPx = minimapBoxPx(game)
     local lines, pad, lineH, boxW, boxH = {}, 4, 14, 0, 0
     if wantInfo then
       if showLoc then
@@ -3200,23 +3277,4 @@ return function(mod)
     love.graphics.setScissor()
   end)
 
-  -- Keep minimap in sync with Gen2 day/night changes
-  pcall(function()
-    mod.events:on("world.tod_changed", function(ev)
-      if ev and ev.tod then
-        local n = normalizeTod(ev.tod)
-        if n then currentTod = n end
-      end
-      -- drop cached canvases so next draw rebuilds with new tint
-      for k in pairs(mapCanvasCache) do
-        mapCanvasCache[k] = nil
-      end
-    end)
-  end)
-  pcall(function()
-    mod.events:on("map.entered", function()
-      -- refresh tod when entering a map
-      currentTod = getTimeOfDay(nil) or currentTod
-    end)
-  end)
 end
