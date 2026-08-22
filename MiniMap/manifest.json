@@ -1,0 +1,8 @@
+{
+  "id": "MiniMap",
+  "name": "MiniMap",
+  "version": "1.0",
+  "api": 2,
+  "entry": "Minimap.lua",
+  "games": ["gen1", "gen2"]
+}
