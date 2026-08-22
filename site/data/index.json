@@ -2,8 +2,8 @@
   "schema_version": 1,
   "mods": [
     {
-      "id": "player_pos_hud",
-      "name": "Player Position HUD",
+      "id": "Minimap",
+      "name": "Minimap",
       "version": "1.0",
       "author": "KKSSXX",
       "repository": "https://github.com/KKSSXX/PKEXPLOSIVENONSENE"
